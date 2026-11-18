@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FindiT — Lost & Found</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#09090d;color:#fff;font-family:Arial,sans-serif}
+header{text-align:center;padding:42px 16px 24px}h1{font-size:clamp(42px,10vw,76px);letter-spacing:5px;color:#a78bfa;margin:0}
+header p{color:#c4b5fd;margin:8px 0 0}.tag{color:#aaa;font-size:14px}
+nav{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin:18px auto 30px}
+nav button{border:0;border-radius:40px;padding:17px 36px;font-size:18px;font-weight:bold;cursor:pointer;background:#fff;color:#17131f}
+main{max-width:900px;margin:auto;padding:0 16px 60px}.panel{display:none}.panel.active{display:block}
+h2{color:#c4b5fd}form,.item{background:#17151e;border:1px solid #30283d;border-radius:18px;padding:18px;margin:14px 0}
+input,textarea{width:100%;padding:12px;margin:7px 0 12px;border:1px solid #514765;border-radius:10px;background:#0e0c13;color:white}
+label{font-size:14px;color:#ddd}button.action{border:0;border-radius:10px;padding:12px 18px;background:#a78bfa;color:#130d20;font-weight:bold;cursor:pointer}
+button.danger{background:#e5a0a0;margin-left:6px}.item img{max-width:100%;max-height:260px;object-fit:contain;border-radius:12px;display:block;margin:10px 0}
+.item small{color:#b7a9ca}.item p{white-space:pre-wrap}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.toolbar input{flex:1;min-width:180px}
+.status{color:#c4b5fd;min-height:22px}.hint{color:#aaa;font-size:13px;line-height:1.5}
+</style>
+</head>
+<body>
+<header><h1>FINDIT</h1><p>Lost & Found Management System</p><div class="tag">Find it. Post it. Get it back.</div></header>
+<nav><button onclick="show('lost')">LOST 🔎</button><button onclick="show('found')">FOUND 📥</button></nav>
+<main>
+<section id="lost" class="panel active">
+<h2>Lost Items</h2>
+<form id="lostForm">
+<label>Item name</label><input id="lostName" required maxlength="80">
+<label>Description</label><textarea id="lostDesc" rows="3" maxlength="500"></textarea>
+<label>Location</label><input id="lostLocation" required maxlength="120">
+<label>Date</label><input id="lostDate" type="date" required>
+<label>Time</label><input id="lostTime" type="time">
+<label>Photo (optional; compressed and stored in the database)</label><input id="lostPhoto" type="file" accept="image/*">
+<button class="action">Post lost item</button><div id="lostStatus" class="status"></div>
+</form><div class="toolbar"><input id="lostSearch" placeholder="Search lost items..." oninput="render('lost')"></div><div id="lostList"></div>
+</section>
+<section id="found" class="panel">
+<h2>Found Items</h2>
+<form id="foundForm">
+<label>Item name</label><input id="foundName" required maxlength="80">
+<label>Description</label><textarea id="foundDesc" rows="3" maxlength="500"></textarea>
+<label>Location</label><input id="foundLocation" required maxlength="120">
+<label>Date</label><input id="foundDate" type="date" required>
+<label>Time</label><input id="foundTime" type="time">
+<label>Photo (optional; compressed and stored in the database)</label><input id="foundPhoto" type="file" accept="image/*">
+<button class="action">Post found item</button><div id="foundStatus" class="status"></div>
+</form><div class="toolbar"><input id="foundSearch" placeholder="Search found items..." oninput="render('found')"></div><div id="foundList"></div>
+</section>
+<p class="hint">Posts are public. Anyone using this site can edit or delete any post. Do not include private contact details or sensitive information. Photos are compressed and stored in Firestore; this is a small-project workaround, not a scalable photo-storage service.</p>
+</main>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+// Replace these placeholder values with your Firebase project's web config.
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+apiKey: "AIzaSyBCOJcY6bdqHOIgU9kWVII0AL1dhnrC3Bk",
+authDomain: "findit-4810a.firebaseapp.com",
+projectId: "findit-4810a",
+storageBucket: "findit-4810a.firebasestorage.app",
+messagingSenderId: "1091741970785",
+appId: "1:1091741970785:web:c8ead33afb2ec3170d9520",
+measurementId: "G-P0T0Z02X60"
+};
+const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app);
+let items=[];
+const status=(t,s)=>document.getElementById(t+"Status").textContent=s;
+window.show=(type)=>{document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));document.getElementById(type).classList.add("active")};
+function compress(file){return new Promise((resolve,reject)=>{if(!file){resolve("");return}const reader=new FileReader();reader.onerror=reject;reader.onload=()=>{const im=new Image();im.onerror=reject;im.onload=()=>{const scale=Math.min(1,640/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=Math.round(im.width*scale);c.height=Math.round(im.height*scale);c.getContext("2d").drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL("image/jpeg",0.58))};im.src=reader.result};reader.readAsDataURL(file)})}
+async function submit(type,e){e.preventDefault();const $=id=>document.getElementById(type+id[0].toUpperCase()+id.slice(1));try{status(type,"Saving...");const photo=await compress($("photo").files[0]);if(photo.length>700000)throw new Error("Image is too large. Please choose a smaller photo.");await addDoc(collection(db,"items"),{type,name:$("name").value.trim(),description:$("desc").value.trim(),location:$("location").value.trim(),date:$("date").value,time:$("time").value,photo,createdAt:Date.now()});e.target.reset();status(type,"Posted successfully.");}catch(err){status(type,err.message)}}
+document.getElementById("lostForm").addEventListener("submit",e=>submit("lost",e));
+document.getElementById("foundForm").addEventListener("submit",e=>submit("found",e));
+window.render=(type)=>{const q=(document.getElementById(type+"Search").value||"").toLowerCase();const list=document.getElementById(type+"List");list.innerHTML="";items.filter(x=>x.type===type&&[x.name,x.description,x.location].join(" ").toLowerCase().includes(q)).forEach(x=>{const el=document.createElement("article");el.className="item";const title=document.createElement("h3");title.textContent=x.name;el.append(title);if(x.photo){const im=document.createElement("img");im.src=x.photo;im.alt=x.name;el.append(im)}const desc=document.createElement("p");desc.textContent=x.description||"";el.append(desc);const meta=document.createElement("small");meta.textContent=`${x.location} · ${x.date||""} ${x.time||""}`;el.append(meta);const edit=document.createElement("button");edit.className="action";edit.textContent="Edit";edit.onclick=()=>editItem(x);const del=document.createElement("button");del.className="action danger";del.textContent="Delete";del.onclick=()=>deleteItem(x.id);el.append(document.createElement("br"),edit,del);list.append(el)})};
+async function editItem(x){const name=prompt("Item name:",x.name);if(name===null)return;const location=prompt("Location:",x.location);if(location===null)return;const description=prompt("Description:",x.description||"");if(description===null)return;try{await updateDoc(doc(db,"items",x.id),{name,location,description})}catch(e){alert(e.message)}}
+async function deleteItem(id){if(!confirm("Delete this post? Anyone can delete any post."))return;try{await deleteDoc(doc(db,"items",id))}catch(e){alert(e.message)}}
+signInAnonymously(auth).then(()=>{const q=query(collection(db,"items"),orderBy("createdAt","desc"));onSnapshot(q,s=>{items=s.docs.map(d=>({id:d.id,...d.data()}));render("lost");render("found")},e=>{console.error(e);alert("Database error: "+e.message)})}).catch(e=>alert("Sign-in error: "+e.message));
+</script>
+</body></html>
